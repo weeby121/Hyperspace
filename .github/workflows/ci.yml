@@ -1,0 +1,36 @@
+name: CI Health Check
+
+# Trigger: Run this whenever we push code
+on: [push]
+
+jobs:
+  # Job 1: Check the Backend
+  test-backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend # Tells robot to look inside "backend" folder
+
+    steps:
+      - uses: actions/checkout@v3 # 1. Download the code
+      - uses: actions/setup-node@v3 # 2. Install Node.js
+        with:
+          node-version: 18
+      - run: npm ci # 3. Install backend dependencies (clean install)
+      # We don't have tests yet, but if we did, we'd run "npm test" here.
+      # For now, let's just make sure it installs without crashing.
+
+  # Job 2: Check the Frontend
+  build-frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend # Tells robot to look inside "frontend" folder
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+      - run: npm ci # Install frontend dependencies
+      - run: npm run build # Check if the React app actually builds successfully
