@@ -1,0 +1,34 @@
+<svg viewBox="0 0 110 110" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    path {
+      stroke: #22d3ee; /* Cyan-400 to match your brand */
+      stroke-width: 8;
+      fill: none;
+      stroke-linejoin: round;
+    }
+    .inner {
+      stroke-width: 6;
+      opacity: 0.8;
+    }
+    .connector {
+      stroke-width: 4;
+      opacity: 0.5;
+    }
+  </style>
+  <!-- Outer Hexagon -->
+  <path d="M50 5 L93.3 30 V80 L50 105 L6.7 80 V30 L50 5Z" />
+  
+  <!-- Inner Cube -->
+  <path d="M50 25 L75 40 V70 L50 85 L25 70 V40 L50 25Z" class="inner" />
+  
+  <!-- Connecting Lines -->
+  <path d="M50 5 V25" class="connector"/>
+  <path d="M93.3 30 L75 40" class="connector"/>
+  <path d="M93.3 80 L75 70" class="connector"/>
+  <path d="M50 105 V85" class="connector"/>
+  <path d="M6.7 80 L25 70" class="connector"/>
+  <path d="M6.7 30 L25 40" class="connector"/>
+  
+  <!-- Center Glow -->
+  <circle cx="50" cy="55" r="8" fill="#22d3ee" />
+</svg>

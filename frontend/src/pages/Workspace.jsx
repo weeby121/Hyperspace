@@ -7,6 +7,7 @@ import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRe
 import { useBoardData } from '../hooks/UseBoardData';
 import BoardHeader from '../components/board/BoardHeader';
 import BoardToolbar from '../components/board/BoardToolbar';
+import ObjectExplorer from '../components/board/ObjectEplorer'; // <--- NEW IMPORT
 import { COLORS } from '../constants/colors';
 
 export default function Board({ user }) {
@@ -48,25 +49,46 @@ export default function Board({ user }) {
   const currentLineRef = useRef(null); 
   const cursorMeshRef = useRef(null);
   
-  // WASD Keys
   const keysPressed = useRef({});
 
   // ========================================================================
-  // 1. Three.js Initialization
+  // 1. Three.js Initialization (With Stars!)
   // ========================================================================
   useEffect(() => {
     if (!containerRef.current) return;
 
     // Scene
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#0f172a');
-    scene.fog = new THREE.FogExp2('#0f172a', 0.015);
+    scene.background = new THREE.Color('#0b0f19'); // Darker, space-like blue
+    scene.fog = new THREE.FogExp2('#0b0f19', 0.02);
     sceneRef.current = scene;
 
+    // --- NEW: Lively Starfield ---
+    const starGeo = new THREE.BufferGeometry();
+    const starCount = 2000;
+    const starPos = new Float32Array(starCount * 3);
+    for(let i=0; i<starCount*3; i++) {
+        starPos[i] = (Math.random() - 0.5) * 100; // Spread across 100 units
+    }
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+    const starMat = new THREE.PointsMaterial({color: 0xffffff, size: 0.1, transparent: true, opacity: 0.8});
+    const stars = new THREE.Points(starGeo, starMat);
+    scene.add(stars);
+    // -----------------------------
+
     // Grid
-    const gridHelper = new THREE.GridHelper(100, 100, '#334155', '#1e293b');
+    const gridHelper = new THREE.GridHelper(100, 100, '#1e293b', '#0f172a');
     gridHelper.position.y = -0.01; 
     scene.add(gridHelper);
+
+    // Floor (Shadow Receiver)
+    const floorGeo = new THREE.PlaneGeometry(200, 200);
+    const floorMat = new THREE.ShadowMaterial({ opacity: 0.3 });
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -0.02; 
+    floor.receiveShadow = true; 
+    scene.add(floor);
 
     // Ghost Cursor
     const cursorGeo = new THREE.BoxGeometry(1, 0.1, 1);
@@ -77,10 +99,13 @@ export default function Board({ user }) {
     cursorMeshRef.current = cursorMesh;
 
     // Lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
     dirLight.position.set(10, 20, 10);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 2048;
+    dirLight.shadow.mapSize.height = 2048;
     scene.add(dirLight);
 
     // Camera
@@ -89,15 +114,16 @@ export default function Board({ user }) {
     camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
-    // WebGL Renderer
+    // Renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.domElement.style.position = 'absolute';
     containerRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // CSS2D Renderer
     const labelRenderer = new CSS2DRenderer();
     labelRenderer.setSize(window.innerWidth, window.innerHeight);
     labelRenderer.domElement.style.position = 'absolute';
@@ -107,13 +133,12 @@ export default function Board({ user }) {
     // Controls
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    // We remove maxPolarAngle restriction slightly to allow looking straight up/down while flying
-    controls.maxPolarAngle = Math.PI; 
+    controls.maxPolarAngle = Math.PI; // Free look
     controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE };
     controls.touches = { ONE: THREE.TOUCH.DOLLY_PAN, TWO: THREE.TOUCH.ROTATE };
     controlsRef.current = controls;
 
-    // --- Interaction Logic ---
+    // --- Listeners ---
     const getRayPlaneIntersection = (clientX, clientY) => {
         const rect = renderer.domElement.getBoundingClientRect();
         const x = ((clientX - rect.left) / rect.width) * 2 - 1;
@@ -135,8 +160,22 @@ export default function Board({ user }) {
     const onPointerDown = async (e) => {
         if (e.button !== 0) return;
         const point = getRayPlaneIntersection(e.clientX, e.clientY);
-        if (!point) return;
+        
+        // Eraser Click Logic
+        if (stateRef.current.activeTool === 'eraser') {
+             isDraggingRef.current = true;
+             const interactables = Array.from(meshMap.current.values()).filter(o => o.userData.isInteractable);
+             const hits = getIntersects(e.clientX, e.clientY, interactables);
+             if (hits.length > 0) {
+                 const id = hits[0].object.userData.id;
+                 sceneRef.current.remove(hits[0].object);
+                 meshMap.current.delete(id);
+                 deleteElement(id, { id, type: 'unknown' });
+             }
+             return; // Stop processing other tools
+        }
 
+        if (!point) return;
         const { activeTool, color, connectStartId } = stateRef.current;
 
         if (activeTool === 'cube') {
@@ -183,8 +222,21 @@ export default function Board({ user }) {
 
     const onPointerMove = (e) => {
         const point = getRayPlaneIntersection(e.clientX, e.clientY);
+        
+        // Eraser Drag Logic
+        if (stateRef.current.activeTool === 'eraser' && isDraggingRef.current) {
+            const interactables = Array.from(meshMap.current.values()).filter(o => o.userData.isInteractable);
+            const hits = getIntersects(e.clientX, e.clientY, interactables);
+            if (hits.length > 0) {
+                 const id = hits[0].object.userData.id;
+                 sceneRef.current.remove(hits[0].object);
+                 meshMap.current.delete(id);
+                 deleteElement(id, { id, type: 'unknown' });
+            }
+        }
+
         if (point) {
-            cursorMeshRef.current.visible = true;
+            cursorMeshRef.current.visible = stateRef.current.activeTool !== 'eraser'; // Hide cursor for eraser
             if (stateRef.current.activeTool === 'cube' || stateRef.current.activeTool === 'database') {
                 cursorMeshRef.current.position.set(Math.round(point.x), 0.05, Math.round(point.z));
             } else {
@@ -252,38 +304,30 @@ export default function Board({ user }) {
     canvas.addEventListener('pointerup', onPointerUp);
     canvas.addEventListener('pointerleave', onPointerUp);
 
-    // --- Animation Loop ---
     const animate = () => {
       requestAnimationFrame(animate);
       controls.update();
 
-      // --- WASD "Free Flight" Logic ---
+      // Slow rotation for stars to make it feel alive
+      stars.rotation.y += 0.0002; 
+
       if (keysPressed.current['w'] || keysPressed.current['a'] || keysPressed.current['s'] || keysPressed.current['d']) {
           const speed = 0.5;
-          
-          // Get Forward vector (Direction camera is facing)
           const forward = new THREE.Vector3();
           camera.getWorldDirection(forward);
-          // NOTE: We do NOT flatten .y here, allowing 3D flight (high/low)
-
-          // Get Right vector
           const right = new THREE.Vector3();
           right.crossVectors(forward, camera.up).normalize();
-
           const dir = new THREE.Vector3();
 
-          // Add vectors based on keys
           if (keysPressed.current['w']) dir.addScaledVector(forward, speed);
-          if (keysPressed.current['s']) dir.addScaledVector(forward, -speed); // Explicitly move backwards
+          if (keysPressed.current['s']) dir.addScaledVector(forward, -speed);
           if (keysPressed.current['d']) dir.addScaledVector(right, speed);
           if (keysPressed.current['a']) dir.addScaledVector(right, -speed);
 
-          // Move Camera AND the Orbit Target so we don't snap back
           camera.position.add(dir);
           controls.target.add(dir);
       }
 
-      // Update Connections
       connectionsRef.current.forEach(conn => {
           const fromMesh = meshMap.current.get(conn.from);
           const toMesh = meshMap.current.get(conn.to);
@@ -319,33 +363,18 @@ export default function Board({ user }) {
     };
   }, []);
 
-  // --- Keyboard Listeners (Undo/Redo + WASD) ---
+  // --- Keyboard Listeners ---
   useEffect(() => {
       const handleKeyDown = (e) => {
-          // WASD tracking
           const key = e.key.toLowerCase();
-          if (['w', 'a', 's', 'd'].includes(key)) {
-              keysPressed.current[key] = true;
-          }
-
-          // Undo/Redo
-          if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-              e.preventDefault();
-              undo();
-          }
-          if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-              e.preventDefault();
-              redo();
-          }
+          if (['w', 'a', 's', 'd'].includes(key)) keysPressed.current[key] = true;
+          if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); }
+          if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo(); }
       };
-
       const handleKeyUp = (e) => {
           const key = e.key.toLowerCase();
-          if (['w', 'a', 's', 'd'].includes(key)) {
-              keysPressed.current[key] = false;
-          }
+          if (['w', 'a', 's', 'd'].includes(key)) keysPressed.current[key] = false;
       };
-
       window.addEventListener('keydown', handleKeyDown);
       window.addEventListener('keyup', handleKeyUp);
       return () => {
@@ -354,7 +383,7 @@ export default function Board({ user }) {
       };
   }, [undo, redo]);
 
-  // --- Scene Syncs (Elements) ---
+  // --- Scene Sync ---
   useEffect(() => {
     if (!sceneRef.current) return;
     connectionsRef.current = elements.filter(e => e.type === 'connection');
@@ -374,10 +403,12 @@ export default function Board({ user }) {
         if (data.type === 'cube') {
           obj = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: data.color }));
           obj.userData = { isInteractable: true, id: data.id, type: 'cube' };
+          obj.castShadow = true; obj.receiveShadow = true;
           sceneRef.current.add(obj);
         } else if (data.type === 'database') {
           obj = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.5, 32), new THREE.MeshStandardMaterial({ color: data.color }));
           obj.userData = { isInteractable: true, id: data.id, type: 'database' };
+          obj.castShadow = true; obj.receiveShadow = true;
           sceneRef.current.add(obj);
         } else if (data.type === 'connection') {
           const geo = new THREE.BufferGeometry();
@@ -423,7 +454,6 @@ export default function Board({ user }) {
     });
   }, [elements, selectedId, connectStartId]);
 
-  // --- Scene Syncs (Remote Cursors) ---
   useEffect(() => {
       if (!sceneRef.current) return;
       const activeIds = new Set(cursors.map(c => c.id));
@@ -456,10 +486,35 @@ export default function Board({ user }) {
   };
   const handleCopyId = () => navigator.clipboard.writeText(window.location.href);
 
+  // --- NEW: Flight Navigation Logic ---
+  const handleNavigate = (item) => {
+      setSelectedId(item.id);
+      
+      // Calculate target position
+      const targetPos = new THREE.Vector3(item.pos.x, item.pos.y, item.pos.z);
+      
+      // Move controls target to object
+      // (For MVP, we snap. For smoothness, we'd need a tween library, but keeping it dependency-light)
+      controlsRef.current.target.copy(targetPos);
+      
+      // Move Camera to a nice offset
+      cameraRef.current.position.set(targetPos.x + 5, targetPos.y + 5, targetPos.z + 5);
+      
+      controlsRef.current.update();
+  };
+
   return (
     <div className="relative w-full h-screen overflow-hidden bg-slate-900 select-none">
       <div ref={containerRef} className="w-full h-full cursor-crosshair" onContextMenu={(e) => e.preventDefault()} />
       <BoardHeader onCopy={handleCopyId} />
+      
+      {/* NEW: Object Explorer */}
+      <ObjectExplorer 
+        elements={elements} 
+        onNavigate={handleNavigate} 
+        selectedId={selectedId} 
+      />
+
       <BoardToolbar 
         activeTool={activeTool} 
         setActiveTool={setActiveTool} 
