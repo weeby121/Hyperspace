@@ -6,9 +6,7 @@ import {
 import { db } from '../firebase';
 import { io } from "socket.io-client"; // Import Socket Client
 
-const SOCKET_URL = import.meta.env.PROD 
-  ? "https://spatial-sync-backend-latest.onrender.com" // We will get this URL soon
-  : "http://localhost:3001";
+const SOCKET_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:3001";
 
 // Connect to your local microservice
 const socket = io(SOCKET_URL);
