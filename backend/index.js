@@ -37,9 +37,9 @@ io.on('connection', (socket) => {
   });
 });
 
-// Start the server on Port 3001
-server.listen(3001, () => {
-  console.log('Microservice running on http://localhost:3001');
+const PORT = process.env.PORT || 3001; // Use Cloud's port OR 3001 if local
+server.listen(PORT, () => {
+  console.log(`Microservice running on port ${PORT}`);
 });
 
 
