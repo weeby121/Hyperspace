@@ -2,7 +2,6 @@ import React from 'react';
 import { Box, Database, Type, Eye, MousePointer2 } from 'lucide-react';
 
 export default function ObjectExplorer({ elements, onNavigate, selectedId }) {
-  // Helper to pick icon based on type
   const getIcon = (type) => {
     switch (type) {
       case 'cube': return <Box size={14} className="text-blue-400" />;
@@ -12,39 +11,38 @@ export default function ObjectExplorer({ elements, onNavigate, selectedId }) {
     }
   };
 
-  // Filter out connections (we usually don't want to list wires)
   const items = elements.filter(e => e.type !== 'connection' && e.type !== 'line');
 
   return (
-    <div className="absolute top-20 left-4 w-64 bg-slate-800/90 backdrop-blur border border-slate-700 rounded-xl shadow-2xl overflow-hidden flex flex-col pointer-events-auto max-h-[70vh]">
-      {/* Header */}
-      <div className="p-3 border-b border-slate-700 bg-slate-900/50 flex justify-between items-center">
+    <div className="bg-[#0f172a] border border-slate-700/50 rounded-2xl flex flex-col h-full overflow-hidden shadow-xl">
+      <div className="p-4 border-b border-slate-700/50 flex justify-between items-center bg-slate-800/30">
         <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Explorer</span>
-        <span className="text-xs text-slate-500">{items.length} items</span>
+        <span className="text-[10px] bg-slate-700 px-2 py-0.5 rounded-full text-slate-300">{items.length}</span>
       </div>
 
-      {/* List */}
       <div className="overflow-y-auto flex-1 p-2 space-y-1 custom-scrollbar">
         {items.length === 0 ? (
-          <div className="text-center py-8 text-slate-500 text-xs">
-            No objects yet.<br/>Start building!
+          <div className="text-center py-8 text-slate-600 text-xs italic">
+            Scene is empty
           </div>
         ) : (
           items.map(item => (
             <button
               key={item.id}
               onClick={() => onNavigate(item)}
-              className={`w-full flex items-center gap-3 p-2 rounded-lg text-sm transition-all group ${
+              className={`w-full flex items-center gap-3 p-2 rounded-lg text-sm transition-all group border border-transparent ${
                 selectedId === item.id 
-                  ? 'bg-blue-600 text-white shadow-md' 
-                  : 'text-slate-400 hover:bg-slate-700 hover:text-white'
+                  ? 'bg-blue-600/10 border-blue-500/30 text-blue-100' 
+                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'
               }`}
             >
               {getIcon(item.type)}
-              <span className="truncate flex-1 text-left">
-                {item.type === 'note' && item.text ? item.text : `${item.type} ${item.id.slice(0,4)}`}
+              <span className="truncate flex-1 text-left text-xs font-medium">
+                {item.type === 'note' && item.text ? item.text : 
+                 item.type === 'text3d' && item.text ? item.text :
+                 `${item.type} ${item.id.slice(-4)}`}
               </span>
-              <Eye size={12} className={`opacity-0 group-hover:opacity-100 transition-opacity ${selectedId === item.id ? 'text-blue-200' : 'text-slate-500'}`} />
+              {selectedId === item.id && <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />}
             </button>
           ))
         )}
